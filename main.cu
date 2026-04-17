@@ -18,6 +18,7 @@
 // Forward declarations from each variant TU. No shared launcher header:
 // each kernel owns its own launcher and we pull them in one by one here.
 void naive_gemm_launch(const GemmParams& p);
+void tiled_gemm_launch(const GemmParams& p);
 
 namespace {
 
@@ -124,6 +125,7 @@ int main(int argc, char** argv) {
     // --- Kernel registry ------------------------------------------------------
     KernelRegistry<GemmLaunch> registry;
     registry.emplace_back("naive", naive_gemm_launch);
+    registry.emplace_back("tiled", tiled_gemm_launch);
 
     // Compute a per-shape absolute tolerance floor so rtol dominates for
     // typical values but we still catch drift near zero.
