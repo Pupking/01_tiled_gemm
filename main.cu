@@ -1,0 +1,173 @@
+// Layer 0 driver. Registers one kernel per variant, verifies each against
+// cuBLAS (reference), benchmarks with median+stddev, prints a results table.
+//
+// --cross-check runs a one-time cuBLAS vs Kahan-FP64 sanity check at 128^3
+
+#include "common/bench_harness.h"
+#include "gemm_common.h"
+
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
+
+// Forward declarations from each variant TU. No shared launcher header:
+// each kernel owns its own launcher and we pull them in one by one here.
+void naive_gemm_launch(const GemmParams& p);
+
+namespace {
+
+struct Args {
+    int M = 512;
+    int N = 512;
+    int K = 512;
+    int warmup = 3;
+    int iters = 20;
+    int runs = 5;
+    unsigned seed = 0xC0FFEEu;
+    std::string kernel = "all";
+    bool cross_check = false;
+};
+
+Args parse_args(int argc, char** argv) {
+    Args a;
+    for (int i = 1; i < argc; ++i) {
+        std::string k = argv[i];
+        auto next = [&](const char* name) -> const char* {
+            if (i + 1 >= argc) { std::fprintf(stderr, "missing value for %s\n", name); std::exit(2); }
+            return argv[++i];
+        };
+        if      (k == "--M")            a.M      = std::atoi(next("--M"));
+        else if (k == "--N")            a.N      = std::atoi(next("--N"));
+        else if (k == "--K")            a.K      = std::atoi(next("--K"));
+        else if (k == "--warmup")       a.warmup = std::atoi(next("--warmup"));
+        else if (k == "--iters")        a.iters  = std::atoi(next("--iters"));
+        else if (k == "--runs")         a.runs   = std::atoi(next("--runs"));
+        else if (k == "--seed")         a.seed   = (unsigned)std::strtoul(next("--seed"), nullptr, 0);
+        else if (k == "--kernel")       a.kernel = next("--kernel");
+        else if (k == "--cross-check") a.cross_check = true;
+        else { std::fprintf(stderr, "unknown arg: %s\n", k.c_str()); std::exit(2); }
+    }
+    return a;
+}
+
+double gflops_of(int M, int N, int K, double median_ms) {
+    const double flops = 2.0 * (double)M * (double)N * (double)K;
+    return (flops / 1.0e9) / (median_ms / 1.0e3);
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    Args args = parse_args(argc, argv);
+
+    // --- Optional one-time reference-of-reference check ----------------------
+    if (args.cross_check) {
+        const int S = 128;
+        std::vector<float> hA(S * S), hB(S * S), hC_cublas(S * S), hC_kahan(S * S);
+        fill_uniform(hA.data(), hA.size(), -1.0f, 1.0f, args.seed ^ 0x1u);
+        fill_uniform(hB.data(), hB.size(), -1.0f, 1.0f, args.seed ^ 0x2u);
+
+
+        float *dA, *dB, *dC;
+        CUDA_CHECK(cudaMalloc(&dA, S * S * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dB, S * S * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dC, S * S * sizeof(float)));
+        CUDA_CHECK(cudaMemcpy(dA, hA.data(), S * S * sizeof(float), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(dB, hB.data(), S * S * sizeof(float), cudaMemcpyHostToDevice));
+
+        cublasHandle_t h;
+        CUBLAS_CHECK(cublasCreate(&h));
+        GemmParams cp{S, S, S, dA, dB, dC};
+        cublas_gemm_fp32(h, cp);
+        CUDA_CHECK(cudaMemcpy(hC_cublas.data(), dC, S * S * sizeof(float), cudaMemcpyDeviceToHost));
+        CUBLAS_CHECK(cublasDestroy(h));
+
+        cpu_gemm_kahan_fp64(hA.data(), hB.data(), hC_kahan.data(), S, S, S);
+
+        const bool ok = verify_close<float>(hC_kahan.data(), hC_cublas.data(),
+                                            S * S, 1e-4f, 1e-5f);
+        std::printf("cross-check cuBLAS vs Kahan FP64 (M=N=K=%d): %s\n", S, ok ? "OK" : "FAIL");
+        CUDA_CHECK(cudaFree(dA));
+        CUDA_CHECK(cudaFree(dB));
+        CUDA_CHECK(cudaFree(dC));
+        if (!ok) return 1;
+    }
+
+    // --- Problem setup --------------------------------------------------------
+    const int M = args.M, N = args.N, K = args.K;
+    const size_t sA = (size_t)M * K, sB = (size_t)K * N, sC = (size_t)M * N;
+
+    std::vector<float> hA(sA), hB(sB), hRef(sC), hGot(sC);
+    fill_uniform(hA.data(), hA.size(), -1.0f, 1.0f, args.seed ^ 0xA1u);
+    fill_uniform(hB.data(), hB.size(), -1.0f, 1.0f, args.seed ^ 0xB2u);
+
+    float *dA, *dB, *dC;
+    CUDA_CHECK(cudaMalloc(&dA, sA * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&dB, sB * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&dC, sC * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(dA, hA.data(), sA * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(dB, hB.data(), sB * sizeof(float), cudaMemcpyHostToDevice));
+
+    // --- Reference on this exact shape via cuBLAS -----------------------------
+    cublasHandle_t handle;
+    CUBLAS_CHECK(cublasCreate(&handle));
+    GemmParams p{M, N, K, dA, dB, dC};
+    cublas_gemm_fp32(handle, p);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(hRef.data(), dC, sC * sizeof(float), cudaMemcpyDeviceToHost));
+
+    // --- Kernel registry ------------------------------------------------------
+    KernelRegistry<GemmLaunch> registry;
+    registry.emplace_back("naive", naive_gemm_launch);
+
+    // Compute a per-shape absolute tolerance floor so rtol dominates for
+    // typical values but we still catch drift near zero.
+    const float atol = 1e-4f;
+    const float rtol = 1e-3f;
+
+    std::printf("%-7s  %10s  %10s  %7s  %8s  %s\n",
+                "kernel", "median(ms)", "stddev(ms)", "min(ms)", "GFLOPS", "verify");
+    std::printf("%-7s  %10s  %10s  %7s  %8s  %s\n",
+                "------", "----------", "----------", "-------", "------", "------");
+
+    for (auto& entry : registry) {
+        const std::string& name = entry.first;
+        GemmLaunch launch = entry.second;
+        if (args.kernel != "all" && args.kernel != name) continue;
+
+
+        // 1. Verify on a fresh (poisoned) output.
+        poison_output(dC, sC);
+        launch(p);
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaMemcpy(hGot.data(), dC, sC * sizeof(float), cudaMemcpyDeviceToHost));
+        const bool pass = verify_close<float>(hRef.data(), hGot.data(), sC, atol, rtol);
+
+        // 2. Benchmark (poison before each run inside the lambda so we also
+        //    catch kernels that silently skip writes).
+        BenchStats stats = benchmark_kernel(
+            [&]() {
+                poison_output(dC, sC);
+                launch(p);
+            },
+            args.warmup, args.iters, args.runs);
+
+        std::printf("%-7s  %10.4f  %10.4f  %7.4f  %8.2f  %s\n",
+                    name.c_str(),
+                    stats.median_ms, stats.stddev_ms, stats.min_ms,
+                    gflops_of(M, N, K, stats.median_ms),
+                    pass ? "PASS" : "FAIL");
+    }
+
+    CUBLAS_CHECK(cublasDestroy(handle));
+    CUDA_CHECK(cudaFree(dA));
+    CUDA_CHECK(cudaFree(dB));
+    CUDA_CHECK(cudaFree(dC));
+    return 0;
+}
+
