@@ -1,0 +1,28 @@
+# Build outputs
+build/
+*.o
+*.obj
+
+# Profile artifacts
+*.ncu-rep
+!profiles/*.ncu-rep
+*.nsys-rep
+!profiles/*.nsys-rep
+
+# Benchmark dumps
+results/
+*.csv
+
+# Loose binaries and archives
+*.zip
+*.tar.gz
+*.log
+
+# Vendored deps
+cutlass/
+cudnn/
+
+# Editor
+.vscode/
+*.swp
+*.swo
