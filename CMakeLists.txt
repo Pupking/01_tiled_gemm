@@ -4,6 +4,7 @@ add_executable(gemm_bench
     tiled_gemm.cu
     tiled_coalesced_gemm.cu
     multi_tile.cu
+    multi_tile_v2.cu
 )
 
 

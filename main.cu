@@ -21,6 +21,7 @@ void naive_gemm_launch(const GemmParams& p);
 void tiled_gemm_launch(const GemmParams& p);
 void tiled_coalesced_gemm_launch(const GemmParams& p);
 void multi_tile_launch(const GemmParams& p);
+void multi_tile_v2_launch(const GemmParams& p);
 
 
 namespace {
@@ -131,18 +132,18 @@ int main(int argc, char** argv) {
     registry.emplace_back("tiled", tiled_gemm_launch);
     registry.emplace_back("tiled_coalesced", tiled_coalesced_gemm_launch);
     registry.emplace_back("multi_tile", multi_tile_launch);
-
+    registry.emplace_back("multi_tile_v2", multi_tile_v2_launch);
 
     // Compute a per-shape absolute tolerance floor so rtol dominates for
     // typical values but we still catch drift near zero.
     const float atol = 1e-4f;
     const float rtol = 1e-3f;
 
-    std::printf("%-7s  %10s  %10s  %7s  %8s  %s\n",
+    std::printf("%-16s  %10s  %10s  %7s  %8s  %s\n",
                 "kernel", "median(ms)", "stddev(ms)", "min(ms)", "GFLOPS", "verify");
-    std::printf("%-7s  %10s  %10s  %7s  %8s  %s\n",
-                "------", "----------", "----------", "-------", "------", "------");
-
+    std::printf("%-16s  %10s  %10s  %7s  %8s  %s\n",
+                "----------------", "----------", "----------", "-------", "------", "------");
+    
     for (auto& entry : registry) {
         const std::string& name = entry.first;
         GemmLaunch launch = entry.second;
@@ -165,11 +166,27 @@ int main(int argc, char** argv) {
             },
             args.warmup, args.iters, args.runs);
 
-        std::printf("%-7s  %10.4f  %10.4f  %7.4f  %8.2f  %s\n",
+        std::printf("%-16s  %10.4f  %10.4f  %7.4f  %8.2f  %s\n",
                     name.c_str(),
                     stats.median_ms, stats.stddev_ms, stats.min_ms,
                     gflops_of(M, N, K, stats.median_ms),
                     pass ? "PASS" : "FAIL");
+    }
+
+    // cuBLAS baseline — no verify column (self-compare is tautological per audit §L0.2.1).
+    if (args.kernel == "all" || args.kernel == "cublas") {
+        BenchStats stats = benchmark_kernel(
+            [&]() {
+                poison_output(dC, sC);
+                cublas_gemm_fp32(handle, p);
+            },
+            args.warmup, args.iters, args.runs);
+
+        std::printf("%-16s  %10.4f  %10.4f  %7.4f  %8.2f  %s\n",
+                    "cublas",
+                    stats.median_ms, stats.stddev_ms, stats.min_ms,
+                    gflops_of(M, N, K, stats.median_ms),
+                    "ref");
     }
 
     CUBLAS_CHECK(cublasDestroy(handle));
