@@ -2,7 +2,11 @@ add_executable(gemm_bench
     main.cu
     naive_gemm.cu
     tiled_gemm.cu
+    tiled_coalesced_gemm.cu
+    multi_tile.cu
 )
+
+
 
 target_link_libraries(gemm_bench PRIVATE portfolio_common)
 

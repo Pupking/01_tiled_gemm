@@ -19,6 +19,9 @@
 // each kernel owns its own launcher and we pull them in one by one here.
 void naive_gemm_launch(const GemmParams& p);
 void tiled_gemm_launch(const GemmParams& p);
+void tiled_coalesced_gemm_launch(const GemmParams& p);
+void multi_tile_launch(const GemmParams& p);
+
 
 namespace {
 
@@ -126,6 +129,9 @@ int main(int argc, char** argv) {
     KernelRegistry<GemmLaunch> registry;
     registry.emplace_back("naive", naive_gemm_launch);
     registry.emplace_back("tiled", tiled_gemm_launch);
+    registry.emplace_back("tiled_coalesced", tiled_coalesced_gemm_launch);
+    registry.emplace_back("multi_tile", multi_tile_launch);
+
 
     // Compute a per-shape absolute tolerance floor so rtol dominates for
     // typical values but we still catch drift near zero.
