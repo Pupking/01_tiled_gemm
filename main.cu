@@ -22,6 +22,7 @@ void tiled_launch(const GemmParams& p);
 void tiled_coalesced_launch(const GemmParams& p);
 void regblock_launch(const GemmParams& p);
 void warp_rebalance_launch(const GemmParams& p);
+void bank_pad_vec_launch(const GemmParams& p);
 
 
 
@@ -134,6 +135,7 @@ int main(int argc, char** argv) {
     registry.emplace_back("tiled_coalesced", tiled_coalesced_launch);
     registry.emplace_back("regblock",        regblock_launch);
     registry.emplace_back("warp_rebalance",  warp_rebalance_launch);
+    registry.emplace_back("bank_pad_vec", bank_pad_vec_launch);
 
     // Compute a per-shape absolute tolerance floor so rtol dominates for
     // typical values but we still catch drift near zero.

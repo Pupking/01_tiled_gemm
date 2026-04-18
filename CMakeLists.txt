@@ -5,6 +5,7 @@ add_executable(gemm_bench
     02_tiled_coalesced.cu
     03_regblock.cu
     04_warp_rebalance.cu
+    05_bank_pad_vec.cu
 )
 
 
