@@ -22,7 +22,7 @@ __global__ void naive_gemm_kernel(const float* __restrict__ A,
     C[row * N + col] = acc;
 }
 
-void naive_gemm_launch(const GemmParams& p) {
+void naive_launch(const GemmParams& p) {
     constexpr int BS = 16;                                      // 16x16 = 256 threads
     dim3 block(BS, BS);
     dim3 grid((p.N + BS - 1) / BS, (p.M + BS - 1) / BS);

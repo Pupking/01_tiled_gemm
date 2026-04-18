@@ -110,7 +110,7 @@ void tiled_coalesced_gemm_kernel(const float* __restrict__ A,
 
 } // namespace
 
-void tiled_coalesced_gemm_launch(const GemmParams& p) {
+void tiled_coalesced_launch(const GemmParams& p) {
     dim3 block(BLOCK_DIM_X, BLOCK_DIM_Y);
     dim3 grid((p.N + TILE_SIZE - 1) / TILE_SIZE,
               (p.M + TILE_SIZE - 1) / TILE_SIZE);

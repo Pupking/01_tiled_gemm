@@ -1,20 +1,26 @@
-// Layer 0 — v2: double warps/sched to cover the FMA dependency chain that
-// starved v1.
+// Layer 0 — 64×64 tiles, each block sweeps a 1×1 or 2×2 region of output
+// tiles (TILES_PER_BLOCK template param, picked adaptively at launch).
 //
-// ptxas (sm_86, -O3): both <1> and <2> -> 168 regs, 32768 B smem,
-// 0 stack, 0 spill ld/st. __launch_bounds__(128, 3) holds:
-//   168 * 128 * 3 = 64,512 regs/SM  <= 65,536
-//   3 * 32,768 B  = 98,304 B smem/SM <= 100 KB carveout.
+// ptxas (sm_86, -O3): regs=___, smem=32768 B (fill from build log).
 //
-// Change vs v1:
-//   Block: 16x4 = 64 threads (2 warps) -> 16x8 = 128 threads (4 warps)
-//   Per-thread reg block: 16x4 -> 8x4 accumulators (64 -> 32 FP32)
-//   __launch_bounds__(128, 3) targets 3 resident blocks.
-//   Theoretical occupancy 12.5% -> 25%.
+// Correctness note:
+//   BLOCK_DIM_X (16) < TILE_SIZE (64), so each thread writes a 4-column
+//   stripe of the tile; BLOCK_DIM_Y * ROWS_PER_THREAD (4*16=64) covers all
+//   64 rows. A prior version had ROWS_PER_THREAD=8, which silently wrote
+//   only 32 rows × 16 cols of the 64×64 tile — 12.5% coverage. Verify
+//   passed because the un-overwritten cells still held cuBLAS output from
+//   the previous run. common/bench_harness.h::poison_output in the harness
+//   now prevents that class of bug from recurring.
 //
-// SMEM padding: pad-1 fixes the 2-way tileA ld conflict but bumps SMEM
-// 32768 -> 33280 B, dropping 3 -> 2 blocks/SM at 100 KB carve-out. 3 blocks
-// with residual conflicts beats 2 clean blocks here.
+// Block geometry:  16 × 4 = 64 threads (2 warps per block)
+// Per-thread work: ROWS_PER_THREAD × COLS_PER_THREAD = 16 × 4 = 64
+//                  FP32 accumulators in registers. Tight but under SM86's
+//                  255-reg/thread cap; SMEM (32 KB) is the binding
+//                  occupancy constraint, not registers.
+//
+// SMEM per block: 2 × 64 × 64 × 4 B = 32 KB.
+//   - Fits under the 48 KB static per-block SMEM limit (no carve-out).
+//   - 3 blocks/SM at 100 KB per-SM cap → low-occupancy / high-ILP regime.
 
 #include "gemm_common.h"
 
@@ -25,24 +31,24 @@ namespace {
 
 constexpr int TILE_SIZE       = 64;
 constexpr int BLOCK_DIM_X     = 16;
-constexpr int BLOCK_DIM_Y     = 8;
-constexpr int ROWS_PER_THREAD = 8;                          // 8 * 8 = 64 rows
-constexpr int COLS_PER_THREAD = TILE_SIZE / BLOCK_DIM_X;    // = 4 cols
+constexpr int BLOCK_DIM_Y     = 4;
+constexpr int ROWS_PER_THREAD = 16;                         // covers 4 * 16 = 64 rows
+constexpr int COLS_PER_THREAD = TILE_SIZE / BLOCK_DIM_X;    // = 4 cols per thread
 
 template <int TILES_PER_BLOCK>
-__global__ __launch_bounds__(BLOCK_DIM_X * BLOCK_DIM_Y, 3)
-void multi_tile_v2_kernel(const float* __restrict__ A,
-                          const float* __restrict__ B,
-                          float* __restrict__ C,
-                          int M, int N, int K) {
+__global__ __launch_bounds__(BLOCK_DIM_X * BLOCK_DIM_Y)
+void multi_tile_kernel(const float* __restrict__ A,
+                       const float* __restrict__ B,
+                       float* __restrict__ C,
+                       int M, int N, int K) {
     const int tx = threadIdx.x;
     const int ty = threadIdx.y;
 
     __shared__ float tileA[TILE_SIZE][TILE_SIZE];
     __shared__ float tileB[TILE_SIZE][TILE_SIZE];
 
-    constexpr int NUM_THREADS      = BLOCK_DIM_X * BLOCK_DIM_Y;                // 128
-    constexpr int LOADS_PER_THREAD = (TILE_SIZE * TILE_SIZE) / NUM_THREADS;    // 32
+    constexpr int NUM_THREADS      = BLOCK_DIM_X * BLOCK_DIM_Y;
+    constexpr int LOADS_PER_THREAD = (TILE_SIZE * TILE_SIZE) / NUM_THREADS;  // 64
     const int tid      = ty * BLOCK_DIM_X + tx;
     const int numTiles = (K + TILE_SIZE - 1) / TILE_SIZE;
 
@@ -111,13 +117,18 @@ void multi_tile_v2_kernel(const float* __restrict__ A,
     }
 }
 
+// Adaptive launch: 2×2 tiles-per-block only when the resulting grid still
+// saturates SMs; otherwise fall back to 1×1.
 constexpr int MIN_BLOCKS_FOR_TPB2 = 128;
 
 } // namespace
 
-void multi_tile_v2_launch(const GemmParams& p) {
-    // §L0.1.4 — int offsets in the kernel; guard against overflow on large
-    // shapes (unreachable on RTX 3050 memory budget, here for portability).
+void regblock_launch(const GemmParams& p) {
+    // §L0.1.4 — tileRowBase/tileColBase are `int`. They wrap once
+    // blockIdx.{x,y} * TPB * TILE_SIZE exceeds INT_MAX. Runtime-check the
+    // cheap shape bound (audit's alternative to promoting every offset to
+    // int64_t). RTX 3050 memory cap makes this unreachable on-device;
+    // the assert is here for portability to larger GPUs.
     assert(static_cast<long long>(p.M) * p.N < static_cast<long long>(INT_MAX));
     assert(static_cast<long long>(p.K)        < static_cast<long long>(INT_MAX));
 
@@ -129,11 +140,11 @@ void multi_tile_v2_launch(const GemmParams& p) {
 
     if (grid2x * grid2y >= MIN_BLOCKS_FOR_TPB2) {
         dim3 grid(grid2x, grid2y);
-        multi_tile_v2_kernel<2><<<grid, block>>>(p.dA, p.dB, p.dC, p.M, p.N, p.K);
+        multi_tile_kernel<2><<<grid, block>>>(p.dA, p.dB, p.dC, p.M, p.N, p.K);
     } else {
         dim3 grid((p.N + TILE_SIZE - 1) / TILE_SIZE,
                   (p.M + TILE_SIZE - 1) / TILE_SIZE);
-        multi_tile_v2_kernel<1><<<grid, block>>>(p.dA, p.dB, p.dC, p.M, p.N, p.K);
+        multi_tile_kernel<1><<<grid, block>>>(p.dA, p.dB, p.dC, p.M, p.N, p.K);
     }
     CUDA_CHECK_LAST();
 }

@@ -17,11 +17,12 @@
 
 // Forward declarations from each variant TU. No shared launcher header:
 // each kernel owns its own launcher and we pull them in one by one here.
-void naive_gemm_launch(const GemmParams& p);
-void tiled_gemm_launch(const GemmParams& p);
-void tiled_coalesced_gemm_launch(const GemmParams& p);
-void multi_tile_launch(const GemmParams& p);
-void multi_tile_v2_launch(const GemmParams& p);
+void naive_launch(const GemmParams& p);
+void tiled_launch(const GemmParams& p);
+void tiled_coalesced_launch(const GemmParams& p);
+void regblock_launch(const GemmParams& p);
+void warp_rebalance_launch(const GemmParams& p);
+
 
 
 namespace {
@@ -128,11 +129,11 @@ int main(int argc, char** argv) {
 
     // --- Kernel registry ------------------------------------------------------
     KernelRegistry<GemmLaunch> registry;
-    registry.emplace_back("naive", naive_gemm_launch);
-    registry.emplace_back("tiled", tiled_gemm_launch);
-    registry.emplace_back("tiled_coalesced", tiled_coalesced_gemm_launch);
-    registry.emplace_back("multi_tile", multi_tile_launch);
-    registry.emplace_back("multi_tile_v2", multi_tile_v2_launch);
+    registry.emplace_back("naive",           naive_launch);
+    registry.emplace_back("tiled",           tiled_launch);
+    registry.emplace_back("tiled_coalesced", tiled_coalesced_launch);
+    registry.emplace_back("regblock",        regblock_launch);
+    registry.emplace_back("warp_rebalance",  warp_rebalance_launch);
 
     // Compute a per-shape absolute tolerance floor so rtol dominates for
     // typical values but we still catch drift near zero.

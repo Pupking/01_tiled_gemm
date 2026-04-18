@@ -1,10 +1,10 @@
 add_executable(gemm_bench
     main.cu
-    naive_gemm.cu
-    tiled_gemm.cu
-    tiled_coalesced_gemm.cu
-    multi_tile.cu
-    multi_tile_v2.cu
+    00_naive.cu
+    01_tiled.cu
+    02_tiled_coalesced.cu
+    03_regblock.cu
+    04_warp_rebalance.cu
 )
 
 

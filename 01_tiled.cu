@@ -77,7 +77,7 @@ void tiled_gemm_kernel(const float* __restrict__ A,
 
 } // namespace
 
-void tiled_gemm_launch(const GemmParams& p) {
+void tiled_launch(const GemmParams& p) {
     dim3 block(BLOCK_DIM, BLOCK_DIM);
     dim3 grid((p.N + TILE_SIZE - 1) / TILE_SIZE,
               (p.M + TILE_SIZE - 1) / TILE_SIZE);
