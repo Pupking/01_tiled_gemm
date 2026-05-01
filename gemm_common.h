@@ -76,7 +76,7 @@ inline void cublas_gemm_fp32(cublasHandle_t handle, const GemmParams& p) {
 // Slow (O(M*N*K) scalar loop). Used ONCE, for a small shape (M=N=K=128),
 // to cross-validate that cuBLAS agrees with exact FP32-accumulated compute.
 // All other verifications are against cuBLAS
-// !! TODO: Add reference
+// Refer(https://en.wikipedia.org/wiki/Kahan_summation_algorithm)
 inline void cpu_gemm_kahan_fp64(const float* A, const float* B, float* C,
                                 int M, int N, int K) {
     for (int i = 0; i < M; ++i) {

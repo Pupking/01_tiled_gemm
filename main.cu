@@ -176,7 +176,6 @@ int main(int argc, char** argv) {
                     pass ? "PASS" : "FAIL");
     }
 
-    // cuBLAS baseline — no verify column (self-compare is tautological per audit §L0.2.1).
     if (args.kernel == "all" || args.kernel == "cublas") {
         BenchStats stats = benchmark_kernel(
             [&]() {

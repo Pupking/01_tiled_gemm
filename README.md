@@ -7,14 +7,14 @@ optimisation didn't behave as expected**. Reproducible end-to-end from
 the `.ncu-rep` files in this repo.
 
 Full per-step profile summary lives in:
-**[docs/01_tiled_gemm.md](../../docs/01_tiled_gemm.md)** , this README is the index.
+**[docs/01_tiled_gemm.md](docs/01_tiled_gemm.md)** , this README is the index.
 
 ## Deep Dive Contents
 
 - Reading Speed-of-Light summaries to localise a bottleneck across six kernels.
 - Picking specific metrics to *confirm* the issue or optimization that actually helped.
 - Reasoning across the L1 / L2 / DRAM hierarchy and the register / SMEM / occupancy optimizations.
-- A case where speedup was not due to the expected optimization(useful when doing mulitple optimizations at once).
+- A case where speedup was not due to the expected optimization(useful when doing multiple optimizations at once).
 
 ## Results
 
@@ -34,7 +34,7 @@ Full per-step profile summary lives in:
 
 cuBLAS reference goes through `cublasGemmEx` with `CUBLAS_COMPUTE_32F` +
 `CUBLAS_GEMM_DEFAULT` - Tensor Cores disabled, single FP32 accumulator
-throughout, for apples-to-apples comparision on CUDA cores. Times are medians of 5 × 50 iterations.
+throughout, for apples-to-apples comparison on CUDA cores. Times are medians of 5 × 50 iterations.
 
 ## Experimental Setup
 
@@ -73,11 +73,10 @@ any per-block technique exercised here.
 
 ## Verification
 
-- Cross-checked element-wise against cuBLAS on every launch via the
-  `--cross-check` flag (NaN-aware `atol + rtol·|ref|` comparison
-  on the host after `cudaMemcpy`-back).
+- Cross-checked element-wise against cuBLAS on every launch  (NaN-aware `atol + rtol·|ref|` comparison
+  on the host after `cudaMemcpy` back).
 - The cuBLAS reference itself is cross-validated once at M = N = K = 128
-  against an FP64 Kahan-summed CPU reference.
+  against an FP64 Kahan-summed CPU reference via the `--cross check` flag.
 - Output buffer is poisoned before every launch so a half-written kernel
   cannot pass verify by reading stale data from a prior cuBLAS call.
 
@@ -85,9 +84,7 @@ any per-block technique exercised here.
 
 **Build:**
 ```bash
-rm -rf build && mkdir build && cd build
-cmake .. && cmake --build . --parallel
-cd ..
+cmake -S . -B build && cmake --build build --parallel -j
 ```
 
 **Run the full Layer-0 sweep (harness timings):**
@@ -100,18 +97,16 @@ cd ..
 ```bash
 ./scripts/profile_layer0.sh
 ```
-Produces one `.ncu-rep` per kernel under `profiles/01_tiled_gemm/`,
-plus anchor-metric CSVs under `profiles/01_tiled_gemm/csv/`.
+Produces one `.ncu-rep` per kernel under `profiles/`,
+plus metric CSVs under `profiles/csv/`.
 
 ## Scope
 
 - **Per-block, single-shape FP32.** Every number is at M = N = K = 2048.
   Tall, skinny, or rectangular shapes hit different bottlenecks first;
-  CUTLASS or cuBLASLt is the right tool there. These codes works for all 
-  sizes, but are not optimized for those
-- **No Tensor Cores, no mixed precision.** This was mainly to fill the 
-issues related to memory and use tiling, with tensor cores, a gap in these levels
-will be amplified due to the high compute tensor core offer.
+  CUTLASS or cuBLASLt is the right tool there. These kernels work for all 
+  sizes, but aren't tuned for other shapes.
+- **No Tensor Cores, no mixed precision.** 
 - **Stops at the per-block layer.** The 1.37 × gap to cuBLAS is mainly due to
   cross-block / L2-reuse; the deep-dive doc identifies it using
   (L2 hit 52 % vs cuBLAS 82 %).

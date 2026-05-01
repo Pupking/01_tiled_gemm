@@ -1,8 +1,6 @@
 // Layer 0 — 64×64 tiles, each block sweeps a 1×1 or 2×2 region of output
 // tiles (TILES_PER_BLOCK template param, picked adaptively at launch).
 //
-// ptxas (sm_86, -O3): regs=___, smem=32768 B (fill from build log).
-//
 // Correctness note:
 //   BLOCK_DIM_X (16) < TILE_SIZE (64), so each thread writes a 4-column
 //   stripe of the tile; BLOCK_DIM_Y * ROWS_PER_THREAD (4*16=64) covers all
@@ -124,11 +122,6 @@ constexpr int MIN_BLOCKS_FOR_TPB2 = 128;
 } // namespace
 
 void regblock_launch(const GemmParams& p) {
-    // §L0.1.4 — tileRowBase/tileColBase are `int`. They wrap once
-    // blockIdx.{x,y} * TPB * TILE_SIZE exceeds INT_MAX. Runtime-check the
-    // cheap shape bound (audit's alternative to promoting every offset to
-    // int64_t). RTX 3050 memory cap makes this unreachable on-device;
-    // the assert is here for portability to larger GPUs.
     assert(static_cast<long long>(p.M) * p.N < static_cast<long long>(INT_MAX));
     assert(static_cast<long long>(p.K)        < static_cast<long long>(INT_MAX));
 

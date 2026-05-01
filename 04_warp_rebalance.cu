@@ -116,8 +116,6 @@ constexpr int MIN_BLOCKS_FOR_TPB2 = 128;
 } // namespace
 
 void warp_rebalance_launch (const GemmParams& p) {
-    // §L0.1.4 — int offsets in the kernel; guard against overflow on large
-    // shapes (unreachable on RTX 3050 memory budget, here for portability).
     assert(static_cast<long long>(p.M) * p.N < static_cast<long long>(INT_MAX));
     assert(static_cast<long long>(p.K)        < static_cast<long long>(INT_MAX));
 
