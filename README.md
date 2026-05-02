@@ -18,23 +18,28 @@ Full per-step profile summary lives in:
 
 ## Results
 
+Representative run on the setup below; regenerate with the command in
+[Reproducing](#reproducing).
+
 |                  | naive | tiled | coalesced | regblock | warp_rebal | bank_pad_vec | cuBLAS |
 |------------------|-------|-------|-----------|----------|------------|--------------|--------|
-| **ms @ 2048³**   | 40.12 | 11.30 | 9.12      | 7.19     | 6.35       | **5.92**     | 4.31   |
-| **GFLOPS**       | 428   | 1520  | 1884      | 2388     | 2705       | **2901**     | 3983   |
-| **% cuBLAS**     | 11    | 38    | 47        | 60       | 68         | **73**       | 100    |
+| **ms @ 2048³**   | 40.78 | 11.59 | 9.33      | 7.40     | 6.53       | **6.01**     | 4.45   |
+| **GFLOPS**       | 421   | 1483  | 1842      | 2322     | 2633       | **2857**     | 3861   |
+| **% cuBLAS**     | 11    | 38    | 48        | 60       | 68         | **74**       | 100    |
 
 | step                                              | what changed                                          | counter that moved          | step gain |
 |---------------------------------------------------|-------------------------------------------------------|-----------------------------|-----------|
-| [01_tiled.cu](01_tiled.cu)                        | 32×32 SMEM tile, 2×2 register block                   | DRAM throughput 21 -> 43 %   | 3.55 ×    |
+| [01_tiled.cu](01_tiled.cu)                        | 32×32 SMEM tile, 2×2 register block                   | DRAM throughput 21 -> 43 %   | 3.52 ×    |
 | [02_tiled_coalesced.cu](02_tiled_coalesced.cu)    | column-aligned thread mapping for LDG/STG             | st bytes/sector 16 -> 32     | 1.24 ×    |
-| [03_regblock.cu](03_regblock.cu)                  | 64×64 tile, 64 outputs/thread (16×4 reg block)        | LSU pipe 95 -> 55 %          | 1.27 ×    |
+| [03_regblock.cu](03_regblock.cu)                  | 64×64 tile, 64 outputs/thread (16×4 reg block)        | LSU pipe 95 -> 55 %          | 1.26 ×    |
 | [04_warp_rebalance.cu](04_warp_rebalance.cu)      | 128 threads/block, 3 resident blocks/SM               | issue % 53 -> 68             | 1.13 ×    |
-| [05_bank_pad_vec.cu](05_bank_pad_vec.cu)          | LDS.128 on tileB inner load (+ pad+1)                 | LSU pipe 89 -> 64 %          | 1.07 ×    |
+| [05_bank_pad_vec.cu](05_bank_pad_vec.cu)          | LDS.128 on tileB inner load (+ pad+1)                 | LSU pipe 89 -> 64 %          | 1.09 ×    |
 
-cuBLAS reference goes through `cublasGemmEx` with `CUBLAS_COMPUTE_32F` +
-`CUBLAS_GEMM_DEFAULT` - Tensor Cores disabled, single FP32 accumulator
-throughout, for apples-to-apples comparison on CUDA cores. Times are medians of 5 × 50 iterations.
+cuBLAS reference goes through `cublasGemmEx` with `CUDA_R_32F`
+operands/results, `CUBLAS_COMPUTE_32F`, and `CUBLAS_GEMM_DEFAULT`.
+The handwritten kernels are FP32 CUDA-core kernels; the tracked cuBLAS
+profile for this run reports 0 % Tensor pipe utilization. Times are
+medians of 5 × 50 iterations; the command to regenerate them is below.
 
 ## Experimental Setup
 
@@ -90,7 +95,7 @@ cmake -S . -B build && cmake --build build --parallel -j
 **Run the full Layer-0 sweep (harness timings):**
 ```bash
 ./build/bin/gemm_bench --cross-check --M 2048 --N 2048 --K 2048 \
-                      --iters 50 --runs 5 --warmup 3
+                      --iters 50 --runs 5 --warmup 5
 ```
 
 **Capture profiles** (Nsight Compute 2025.3+):
@@ -98,7 +103,7 @@ cmake -S . -B build && cmake --build build --parallel -j
 ./scripts/profile_layer0.sh
 ```
 Produces one `.ncu-rep` per kernel under `profiles/`,
-plus metric CSVs under `profiles/csv/`.
+which can be opened in Nsight Compute or exported separately as metric CSVs.
 
 ## Scope
 
@@ -106,7 +111,8 @@ plus metric CSVs under `profiles/csv/`.
   Tall, skinny, or rectangular shapes hit different bottlenecks first;
   CUTLASS or cuBLASLt is the right tool there. These kernels work for all 
   sizes, but aren't tuned for other shapes.
-- **No Tensor Cores, no mixed precision.** 
+- **FP32 CUDA-core handwritten kernels.** The handwritten variants do not use
+  mixed precision or WMMA/MMA/GMMA/Tensor Core intrinsics.
 - **Stops at the per-block layer.** The 1.37 × gap to cuBLAS is mainly due to
   cross-block / L2-reuse; the deep-dive doc identifies it using
   (L2 hit 52 % vs cuBLAS 82 %).

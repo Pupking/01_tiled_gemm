@@ -53,7 +53,8 @@ inline void fill_uniform(float* buf, std::size_t n,
 // ---------------------------------------------------------------------------
 // cuBLAS is column-major. To compute row-major C = A * B we ask cuBLAS
 // for the equivalent column-major C^T = B^T * A^T (swapping operands,
-// both OP_N). Computed in FP32 regardless of hardware tensor-core path.
+// both OP_N). The API requests CUDA_R_32F data and CUBLAS_COMPUTE_32F;
+// it does not assert which internal hardware path cuBLAS selects.
 
 inline void cublas_gemm_fp32(cublasHandle_t handle, const GemmParams& p) {
     const float alpha = 1.0f, beta = 0.0f;
@@ -93,4 +94,3 @@ inline void cpu_gemm_kahan_fp64(const float* A, const float* B, float* C,
         }
     }
 }
-

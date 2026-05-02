@@ -20,7 +20,7 @@
 namespace {
 
 constexpr int TILE_SIZE       = 64;
-constexpr int TILE_STRIDE_A   = TILE_SIZE + 1;   // pad+1: break 8-row LDS conflict. cp.async FORBIDDEN (§L0.1.2).
+constexpr int TILE_STRIDE_A   = TILE_SIZE + 1;   // pad+1: break 8-row LDS conflict.
 constexpr int TILE_STRIDE_B   = TILE_SIZE;       // no pad: contiguous-col b-load is already clean.
 constexpr int BLOCK_DIM_X     = 16;
 constexpr int BLOCK_DIM_Y     = 8;
@@ -85,8 +85,8 @@ void bank_pad_vec_kernel(const float* __restrict__ A,
                     #pragma unroll
                     for (int r = 0; r < ROWS_PER_THREAD; ++r) {
                         #pragma unroll
-                        for (int cc = 0; cc < COLS_PER_THREAD; ++cc)
-                            sums[r][cc] += a[r] * b[cc];
+                        for (int c = 0; c < COLS_PER_THREAD; ++c)
+                            sums[r][c] += a[r] * b[c];
                     }
                 }
 
@@ -98,10 +98,10 @@ void bank_pad_vec_kernel(const float* __restrict__ A,
                 const int row = tileRowBase + ty * ROWS_PER_THREAD + r;
                 if (row >= M) continue;
                 #pragma unroll
-                for (int cc = 0; cc < COLS_PER_THREAD; ++cc) {
-                    const int col = tileColBase + tx * COLS_PER_THREAD + cc;
+                for (int c = 0; c < COLS_PER_THREAD; ++c) {
+                    const int col = tileColBase + tx * COLS_PER_THREAD + c;
                     if (col < N)
-                        C[row * N + col] = sums[r][cc];
+                        C[row * N + col] = sums[r][c];
                 }
             }
         }

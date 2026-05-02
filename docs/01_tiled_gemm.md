@@ -460,7 +460,9 @@ Improving this kernel and further analysis are future work.
 
 Included as the reference ceiling on the
 same hardware and shape, routed through `cublasGemmEx` with
-`CUBLAS_GEMM_DEFAULT` (non-Tensor-Core) as the our GEMM was CUDA core based.
+`CUDA_R_32F` operands/results, `CUBLAS_COMPUTE_32F`, and
+`CUBLAS_GEMM_DEFAULT`. The handwritten kernels are FP32 CUDA-core kernels;
+the tracked cuBLAS profile for this run reports 0 % Tensor pipe utilization.
 The kernel that actually runs is
 `ampere_sgemm_128x128_nn`. There is no code to read for this row, so we
 go straight to the profile.
@@ -496,6 +498,7 @@ Metrics used:
 - lts__t_sector_hit_rate.pct
 - sm__pipe_fma_cycles_active.avg.pct_of_peak_sustained_elapsed
 - sm__inst_executed_pipe_lsu.avg.pct_of_peak_sustained_active
+- sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_active
 - launch__registers_per_thread
 
 ```text
@@ -507,6 +510,7 @@ Metrics used:
   lts__t_sector_hit_rate.pct                                                 %                82.28
   sm__inst_executed_pipe_lsu.avg.pct_of_peak_sustained_active                %                50.14
   sm__pipe_fma_cycles_active.avg.pct_of_peak_sustained_elapsed               %                64.53
+  sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_active             %                    0
 ```
 
 | metric | bank_pad_vec | cublas | delta |
@@ -521,5 +525,5 @@ Metrics used:
 - 50 fewer regs / thread leads to the higher achieved occupancy (32.9% vs our 23.9%), which buys higher FMA %.
 - The 1.37x gap (5.92 ms -> 4.31 ms) is not a property of any per-block technique tried in rows 0-5. Closing it requires cross-block scheduling / L2 tile-swizzle, which sits outside the per-kernel optimizations covered here.
 
-- One more thing to note is that this document lets you optimize the speedup fairly quickly, but for a single shape, not all of them. If we consider tall, short,  skinny or wide matrices. The same metrics are not affected. The workload imbalance becomes a major issue. We would then need to apply additional heuristics to get the best performance for various sizes. CUTLASS/cuBLASLt is a better tool to use in that case for initial development, you have a little more freedom than cuBLAS on the various parameters.
+- One more thing to note is that this document lets you optimize the speedup fairly quickly, but for a single shape, not all of them. If we consider tall, short,  skinny or wide matrices. The same metrics are not affected. The workload imbalance becomes a major issue. We would then need to apply additional heuristics to get the best performance for various sizes. CUTLASS/cuBLASLt is a better tool to use in that case for initial development, you have more freedom than cuBLAS on the various parameters.
 ---

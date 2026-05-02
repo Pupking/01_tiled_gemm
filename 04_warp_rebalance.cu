@@ -10,7 +10,7 @@
 //   Block: 16x4 = 64 threads (2 warps) -> 16x8 = 128 threads (4 warps)
 //   Per-thread reg block: 16x4 -> 8x4 accumulators (64 -> 32 FP32)
 //   __launch_bounds__(128, 3) targets 3 resident blocks.
-//   Theoretical occupancy 12.5% -> 25%.
+//   Theoretical ocupancy 12.5% -> 25%.
 //
 // SMEM padding: pad-1 fixes the 2-way tileA ld conflict but bumps SMEM
 // 32768 -> 33280 B, dropping 3 -> 2 blocks/SM at 100 KB carve-out. 3 blocks
@@ -82,14 +82,14 @@ void multi_tile_v2_kernel(const float* __restrict__ A,
 
                     float b[COLS_PER_THREAD];
                     #pragma unroll
-                    for (int cc = 0; cc < COLS_PER_THREAD; ++cc)
-                        b[cc] = tileB[k][cc * BLOCK_DIM_X + tx];
+                    for (int c = 0; c < COLS_PER_THREAD; ++c)
+                        b[c] = tileB[k][c * BLOCK_DIM_X + tx];
 
                     #pragma unroll
                     for (int r = 0; r < ROWS_PER_THREAD; ++r) {
                         #pragma unroll
-                        for (int cc = 0; cc < COLS_PER_THREAD; ++cc)
-                            sums[r][cc] += a[r] * b[cc];
+                        for (int c = 0; c < COLS_PER_THREAD; ++c)
+                            sums[r][c] += a[r] * b[c];
                     }
                 }
 
@@ -101,10 +101,10 @@ void multi_tile_v2_kernel(const float* __restrict__ A,
                 const int row = tileRowBase + ty * ROWS_PER_THREAD + r;
                 if (row >= M) continue;
                 #pragma unroll
-                for (int cc = 0; cc < COLS_PER_THREAD; ++cc) {
-                    const int col = tileColBase + cc * BLOCK_DIM_X + tx;
+                for (int c = 0; c < COLS_PER_THREAD; ++c) {
+                    const int col = tileColBase + c * BLOCK_DIM_X + tx;
                     if (col < N)
-                        C[row * N + col] = sums[r][cc];
+                        C[row * N + col] = sums[r][c];
                 }
             }
         }

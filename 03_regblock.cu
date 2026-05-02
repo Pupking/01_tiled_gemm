@@ -14,11 +14,11 @@
 // Per-thread work: ROWS_PER_THREAD × COLS_PER_THREAD = 16 × 4 = 64
 //                  FP32 accumulators in registers. Tight but under SM86's
 //                  255-reg/thread cap; SMEM (32 KB) is the binding
-//                  occupancy constraint, not registers.
+//                  ocupancy constraint, not registers.
 //
 // SMEM per block: 2 × 64 × 64 × 4 B = 32 KB.
 //   - Fits under the 48 KB static per-block SMEM limit (no carve-out).
-//   - 3 blocks/SM at 100 KB per-SM cap → low-occupancy / high-ILP regime.
+//   - 3 blocks/SM at 100 KB per-SM cap → low-ocupancy / high-ILP regime.
 
 #include "gemm_common.h"
 
@@ -86,14 +86,14 @@ void multi_tile_kernel(const float* __restrict__ A,
 
                     float b[COLS_PER_THREAD];
                     #pragma unroll
-                    for (int cc = 0; cc < COLS_PER_THREAD; ++cc)
-                        b[cc] = tileB[k][cc * BLOCK_DIM_X + tx];
+                    for (int c = 0; c < COLS_PER_THREAD; ++c)
+                        b[c] = tileB[k][c * BLOCK_DIM_X + tx];
 
                     #pragma unroll
                     for (int r = 0; r < ROWS_PER_THREAD; ++r) {
                         #pragma unroll
-                        for (int cc = 0; cc < COLS_PER_THREAD; ++cc)
-                            sums[r][cc] += a[r] * b[cc];
+                        for (int c = 0; c < COLS_PER_THREAD; ++c)
+                            sums[r][c] += a[r] * b[c];
                     }
                 }
 
@@ -105,10 +105,10 @@ void multi_tile_kernel(const float* __restrict__ A,
                 const int row = tileRowBase + ty * ROWS_PER_THREAD + r;
                 if (row >= M) continue;
                 #pragma unroll
-                for (int cc = 0; cc < COLS_PER_THREAD; ++cc) {
-                    const int col = tileColBase + cc * BLOCK_DIM_X + tx;
+                for (int c = 0; c < COLS_PER_THREAD; ++c) {
+                    const int col = tileColBase + c * BLOCK_DIM_X + tx;
                     if (col < N)
-                        C[row * N + col] = sums[r][cc];
+                        C[row * N + col] = sums[r][c];
                 }
             }
         }

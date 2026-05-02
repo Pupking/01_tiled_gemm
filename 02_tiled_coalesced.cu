@@ -15,7 +15,7 @@
 // Per-thread work: ROWS_PER_THREAD × COLS_PER_THREAD = 8 × 2 = 16
 //                  FP32 accumulators in registers.
 //
-// Store coalescing: within a warp, tx varies 0..15 with (ty, r, cc) uniform.
+// Store coalescing: within a warp, tx varies 0..15 with (ty, r, c) uniform.
 //   - Each half-warp writes 16 consecutive 4-byte floats = 64 B = 2 sectors,
 //     fully utilised.
 //   - The two halves of a warp hit two different rows (ty=0 vs ty=1 within
@@ -81,14 +81,14 @@ void tiled_coalesced_gemm_kernel(const float* __restrict__ A,
 
             float b[COLS_PER_THREAD];
             #pragma unroll
-            for (int cc = 0; cc < COLS_PER_THREAD; ++cc)
-                b[cc] = tileB[k][cc * BLOCK_DIM_X + tx];
+            for (int c = 0; c < COLS_PER_THREAD; ++c)
+                b[c] = tileB[k][c * BLOCK_DIM_X + tx];
 
             #pragma unroll
             for (int r = 0; r < ROWS_PER_THREAD; ++r) {
                 #pragma unroll
-                for (int cc = 0; cc < COLS_PER_THREAD; ++cc)
-                    sums[r][cc] += a[r] * b[cc];
+                for (int c = 0; c < COLS_PER_THREAD; ++c)
+                    sums[r][c] += a[r] * b[c];
             }
         }
 
@@ -100,10 +100,10 @@ void tiled_coalesced_gemm_kernel(const float* __restrict__ A,
         const int row = blockIdx.y * TILE_SIZE + ty * ROWS_PER_THREAD + r;
         if (row >= M) continue;
         #pragma unroll
-        for (int cc = 0; cc < COLS_PER_THREAD; ++cc) {
-            const int col = blockIdx.x * TILE_SIZE + cc * BLOCK_DIM_X + tx;
+        for (int c = 0; c < COLS_PER_THREAD; ++c) {
+            const int col = blockIdx.x * TILE_SIZE + c * BLOCK_DIM_X + tx;
             if (col < N)
-                C[row * N + col] = sums[r][cc];
+                C[row * N + col] = sums[r][c];
         }
     }
 }
