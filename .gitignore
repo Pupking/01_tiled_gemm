@@ -12,6 +12,7 @@ build/
 # Benchmark dumps
 results/
 *.csv
+docs/optimization_notes.md
 
 # Loose binaries and archives
 *.zip

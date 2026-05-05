@@ -41,6 +41,17 @@ add_executable(gemm_bench
     03_regblock.cu
     04_warp_rebalance.cu
     05_bank_pad_vec.cu
+    06_k32_tpb4.cu
+    07_sweep.cu
+    08_splitk_z.cu
+    09_multibuf.cu
+    10_multibuf_sweep.cu
+    11_tile128.cu
+    12_wider_n.cu
+    13_ldg_async.cu
+    # Twelve trait-based kernels collapsed into one TU. Each is a
+    # (Traits, launcher) pair over the shared tiled_kernel template.
+    trait_based_kernels.cu
 )
 
 

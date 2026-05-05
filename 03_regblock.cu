@@ -1,24 +1,16 @@
-// Layer 0 — 64×64 tiles, each block sweeps a 1×1 or 2×2 region of output
-// tiles (TILES_PER_BLOCK template param, picked adaptively at launch).
+// 64x64 tiles. Each block sweeps a 1x1 or 2x2 region of output tiles
+// (TILES_PER_BLOCK template param, picked adaptively at launch).
 //
-// Correctness note:
-//   BLOCK_DIM_X (16) < TILE_SIZE (64), so each thread writes a 4-column
-//   stripe of the tile; BLOCK_DIM_Y * ROWS_PER_THREAD (4*16=64) covers all
-//   64 rows. A prior version had ROWS_PER_THREAD=8, which silently wrote
-//   only 32 rows × 16 cols of the 64×64 tile — 12.5% coverage. Verify
-//   passed because the un-overwritten cells still held cuBLAS output from
-//   the previous run. common/bench_harness.h::poison_output in the harness
-//   now prevents that class of bug from recurring.
-//
-// Block geometry:  16 × 4 = 64 threads (2 warps per block)
-// Per-thread work: ROWS_PER_THREAD × COLS_PER_THREAD = 16 × 4 = 64
-//                  FP32 accumulators in registers. Tight but under SM86's
-//                  255-reg/thread cap; SMEM (32 KB) is the binding
-//                  ocupancy constraint, not registers.
-//
-// SMEM per block: 2 × 64 × 64 × 4 B = 32 KB.
-//   - Fits under the 48 KB static per-block SMEM limit (no carve-out).
-//   - 3 blocks/SM at 100 KB per-SM cap → low-ocupancy / high-ILP regime.
+// Block:        16 x 4 = 64 threads (2 warps per block).
+// Per-thread:   ROWS_PER_THREAD x COLS_PER_THREAD = 16 x 4 = 64 FP32 sums.
+//               Tight, but under sm_86's 255-reg/thread cap. SMEM (32 KB)
+//               is the binding occupancy constraint, not registers.
+// Coverage:     BLOCK_DIM_Y * ROWS_PER_THREAD = 4*16 = 64 = TILE_SIZE; each
+//               thread writes a 4-column stripe spanning the full 64 rows.
+//               (Same poison_output story as 02 caught a previous version
+//               that covered only 12.5% of each tile.)
+// SMEM/block:   2 * 64 * 64 * 4 B = 32 KB; fits 3 blocks/SM at the 100 KB
+//               per-SM cap (low-occupancy / high-ILP regime).
 
 #include "gemm_common.h"
 
@@ -115,15 +107,14 @@ void multi_tile_kernel(const float* __restrict__ A,
     }
 }
 
-// Adaptive launch: 2×2 tiles-per-block only when the resulting grid still
-// saturates SMs; otherwise fall back to 1×1.
+// Adaptive launch: 2x2 tiles-per-block only when the resulting grid still
+// saturates SMs; otherwise fall back to 1x1.
 constexpr int MIN_BLOCKS_FOR_TPB2 = 128;
 
 } // namespace
 
 void regblock_launch(const GemmParams& p) {
     assert(static_cast<long long>(p.M) * p.N < static_cast<long long>(INT_MAX));
-    assert(static_cast<long long>(p.K)        < static_cast<long long>(INT_MAX));
 
     dim3 block(BLOCK_DIM_X, BLOCK_DIM_Y);
 

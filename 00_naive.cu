@@ -1,4 +1,4 @@
-// Layer 0 — Baseline: one thread per output element. No SMEM, no tiling.
+// Baseline: one thread per output element. No SMEM, no tiling.
 // Reference point against which every optimization's speedup is measured.
 //
 // Access pattern: threadIdx.x -> column. Threads in a warp hit consecutive

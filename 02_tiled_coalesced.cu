@@ -1,27 +1,16 @@
-// Layer 0 — Coalesced writes via column-aligned thread mapping.
+// Coalesced writes via column-aligned thread mapping.
 //
-// Correctness note:
-//   BLOCK_DIM_X (16) < TILE_SIZE (32), so each thread writes a 2-column
-//   stripe of the tile; BLOCK_DIM_Y * ROWS_PER_THREAD (4*8=32) covers all
-//   32 rows of the tile. A prior version had ROWS_PER_THREAD=4, which
-//   silently wrote only the top 16 rows × left 16 cols of each output tile
-//   — a 25%-coverage bug that verify happened to miss because the
-//   un-overwritten cells still held the cuBLAS reference output from the
-//   prior benchmark run. Current verify pass now poisons the output buffer
-//   before every launch (common/bench_harness.h::poison_output) so that
-//   class of bug can't repeat.
-//
-// Block geometry:  16 × 4 = 64 threads (2 warps per block)
-// Per-thread work: ROWS_PER_THREAD × COLS_PER_THREAD = 8 × 2 = 16
-//                  FP32 accumulators in registers.
-//
-// Store coalescing: within a warp, tx varies 0..15 with (ty, r, c) uniform.
-//   - Each half-warp writes 16 consecutive 4-byte floats = 64 B = 2 sectors,
-//     fully utilised.
-//   - The two halves of a warp hit two different rows (ty=0 vs ty=1 within
-//     the warp), so each warp produces 4 sector-aligned writes per output
-//     row, not one wide one. This is "coalesced" at the sector level — the
-//     hardware sees no wasted bytes per transaction.
+// Block:        16 x 4 = 64 threads (2 warps per block).
+// Per-thread:   ROWS_PER_THREAD x COLS_PER_THREAD = 8 x 2 = 16 FP32 sums.
+// Coverage:     BLOCK_DIM_Y * ROWS_PER_THREAD = 4*8 = 32 = TILE_SIZE; each
+//               thread writes a 2-column stripe spanning the full 32 rows.
+//               (A prior version with ROWS_PER_THREAD=4 silently wrote 25%
+//               of each tile - poison_output in the harness now catches that
+//               class of bug at verify time.)
+// Store path:   tx=0..15 within a warp; each half-warp writes 16 consecutive
+//               floats = 64 B = 2 sectors, fully utilised. "Coalesced" at the
+//               sector level (no wasted bytes per transaction) even though
+//               there are 4 sector writes per output row, not one wide STG.
 
 #include "gemm_common.h"
 

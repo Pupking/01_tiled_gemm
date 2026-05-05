@@ -10,10 +10,6 @@
 #include <string>
 #include <utility>
 
-// ---------------------------------------------------------------------------
-// CUDA error checking
-// ---------------------------------------------------------------------------
-
 #define CUDA_CHECK(expr)                                                       \
     do {                                                                       \
         cudaError_t _err = (expr);                                             \
@@ -25,28 +21,16 @@
         }                                                                      \
     } while (0)
 
-// Check the error from the most recent kernel launch.
-// Kernel launches (<<<...>>>) do not return cudaError_t; use this after them.
+// Kernel launches don't return cudaError_t; use this right after them.
 #define CUDA_CHECK_LAST() CUDA_CHECK(cudaGetLastError())
 
-// ---------------------------------------------------------------------------
-// NaN-poisoning
-// ---------------------------------------------------------------------------
-// Fills a device buffer with 0xFF bytes — NaN for every IEEE-754 float
-// (fp32 and fp16 alike: all-ones exponent + nonzero mantissa). Call before
-// each verify run. Use this instead allocating additional GPU Memory.
-// Works only for float types
+// Fill a device buffer with NaN (0xFF bytes = all-ones exponent, nonzero
+// mantissa). Call before each verify run so a kernel that silently skips
+// writes can't pass verify by leaving stale data behind.
 template <typename T>
 inline void poison_output(T* d_ptr, std::size_t n) {
     CUDA_CHECK(cudaMemset(d_ptr, 0xFF, n * sizeof(T)));
 }
-
-// ---------------------------------------------------------------------------
-// Benchmarking with variance
-// ---------------------------------------------------------------------------
-// Reports median + stddev across >=5 runs, not a single point estimate.
-// Each run averages `iters` kernel launches; we collect `runs` such per-iter 
-// averages and compute aggregate stats.
 
 struct BenchStats {
     double median_ms;       // median per-iter latency across runs
@@ -58,6 +42,8 @@ struct BenchStats {
     int    iters_per_run;
 };
 
+// Median + stddev across `runs` repeats; each repeat times `iters` launches
+// with one cudaEventElapsedTime so we report a per-iter latency.
 template <typename Fn>
 inline BenchStats benchmark_kernel(Fn&& fn,
                                    int warmup_iters = 3,
@@ -107,16 +93,11 @@ inline BenchStats benchmark_kernel(Fn&& fn,
     return s;
 }
 
-// ---------------------------------------------------------------------------
-// Numerical verification with relative tolerance
-// ---------------------------------------------------------------------------
-// Operates on HOST buffers. Caller must cudaMemcpy device->host first.
-// NaN-aware: a NaN in `got` always fails (via !(err <= tol), which is true
-// for any NaN). Pairs with poison_output() at the top of this header.
-
 inline float to_float(float x)  { return x; }
 inline float to_float(__half x) { return __half2float(x); }
 
+// Element-wise `|got - ref| <= atol + rtol * |ref|`. NaN in `got` always
+// fails (the negated `<=` is true for NaN). Operates on host buffers.
 template <typename T>
 inline bool verify_close(const T* ref, const T* got, std::size_t n,
                          double atol, double rtol, int max_print = 5) {
@@ -127,7 +108,7 @@ inline bool verify_close(const T* ref, const T* got, std::size_t n,
         double g   = static_cast<double>(to_float(got[i]));
         double tol = atol + rtol * std::fabs(r);
         double err = std::fabs(r - g);
-        if (!(err <= tol)) {                 // NaN in err -> fails
+        if (!(err <= tol)) {
             if (printed < max_print) {
                 std::fprintf(stderr,
                     "  [%zu] ref=%g got=%g |err|=%g tol=%g\n",
@@ -147,4 +128,3 @@ inline bool verify_close(const T* ref, const T* got, std::size_t n,
 
 template <typename LaunchFn>
 using KernelRegistry = std::vector<std::pair<std::string, LaunchFn>>;
-

@@ -1,4 +1,4 @@
-// Layer 0 — v2: double warps/sched to cover the FMA dependency chain that
+// double warps/sched to cover the FMA dependency chain that
 // starved v1.
 //
 // ptxas (sm_86, -O3): both <1> and <2> -> 168 regs, 32768 B smem,
@@ -10,7 +10,7 @@
 //   Block: 16x4 = 64 threads (2 warps) -> 16x8 = 128 threads (4 warps)
 //   Per-thread reg block: 16x4 -> 8x4 accumulators (64 -> 32 FP32)
 //   __launch_bounds__(128, 3) targets 3 resident blocks.
-//   Theoretical ocupancy 12.5% -> 25%.
+//   Theoretical occupancy 12.5% -> 25%.
 //
 // SMEM padding: pad-1 fixes the 2-way tileA ld conflict but bumps SMEM
 // 32768 -> 33280 B, dropping 3 -> 2 blocks/SM at 100 KB carve-out. 3 blocks
@@ -117,7 +117,6 @@ constexpr int MIN_BLOCKS_FOR_TPB2 = 128;
 
 void warp_rebalance_launch (const GemmParams& p) {
     assert(static_cast<long long>(p.M) * p.N < static_cast<long long>(INT_MAX));
-    assert(static_cast<long long>(p.K)        < static_cast<long long>(INT_MAX));
 
     dim3 block(BLOCK_DIM_X, BLOCK_DIM_Y);
 

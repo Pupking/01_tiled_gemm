@@ -1,4 +1,4 @@
-// Layer 0 — v3: +1 col pad on tileA to break the 2-way row-stride LDS
+// +1 col pad on tileA to break the 2-way row-stride LDS
 // conflict warp_rebalance left on the table, plus LDS.128 on tileB.
 //
 // ptxas (sm_86, -O3): both <1> and <2> -> 168 regs, smem 33,024 B,
@@ -114,7 +114,6 @@ constexpr int MIN_BLOCKS_FOR_TPB2 = 128;
 
 void bank_pad_vec_launch(const GemmParams& p) {
     assert(static_cast<long long>(p.M) * p.N < static_cast<long long>(INT_MAX));
-    assert(static_cast<long long>(p.K)        < static_cast<long long>(INT_MAX));
 
     dim3 block(BLOCK_DIM_X, BLOCK_DIM_Y);
 

@@ -1,12 +1,12 @@
-// Layer 0 — SMEM tiling + 2×2 register sub-tile per thread.
+// SMEM tiling + 2x2 register sub-tile per thread.
 //
 // Structure:
-//   - 32×32 output tile per block.
-//   - 16×16 = 256 threads (8 warps), each owning a 2×2 output sub-tile.
-//   - Cooperative tile load: 256 threads × 4 loads = 32×32 = 1024 A/B elems.
+//   - 32x32 output tile per block.
+//   - 16x16 = 256 threads (8 warps), each owning a 2x2 output sub-tile.
+//   - Cooperative tile load: 256 threads x 4 loads = 32x32 = 1024 A/B elems.
 //   - Inner k-loop reads 2 A rows and 2 B cols into registers and updates
 //     4 accumulators, turning 4 SMEM-fed FMAs into 4 register-fed FMAs per
-//     k step — the first place GMEM bandwidth stops being the bottleneck.
+//     k step - the first place GMEM bandwidth stops being the bottleneck.
 
 #include "gemm_common.h"
 
