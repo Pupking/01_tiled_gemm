@@ -50,9 +50,7 @@ on top of `bank_pad_vec`:
 (46.5 vs 47.8 ms); cuBLAS holds the lead below 1024^3, where its
 smaller per-block tile saturates the grid better. `gemm_bench` also
 runs the trait-family variants that did not pan out (multibuf
-cp.async, splitk, the block-geometry sweep) -- see
-[docs/optimization_notes.md](docs/optimization_notes.md) for what
-each one tried and why it lost.
+cp.async, splitk, the block-geometry sweep).
 
 cuBLAS reference goes through `cublasGemmEx` with `CUDA_R_32F`
 operands/results, `CUBLAS_COMPUTE_32F`, and `CUBLAS_GEMM_DEFAULT`.
