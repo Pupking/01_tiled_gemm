@@ -1,7 +1,7 @@
 # 01_tiled_gemm - profile-driven FP32 GEMM optimization on Ampere
 
 Six FP32 GEMM kernels for sm_86 (RTX 3050 Laptop) walked from a one-line
-naive baseline to ~73 % of cuBLAS, each step justified by the Nsight
+naive baseline to ~88 % of cuBLAS, each step justified by the Nsight
 Compute counter that moved -- including one step where the counter that
 improved was not the one we predicted. A trait-templated extension on
 top of that walk (vectorised LDG.128 + wider M tile + supertile remap)
